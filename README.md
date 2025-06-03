@@ -20,10 +20,14 @@
 
 ![SlicedK](./cutlass-v3.9.2-learning/images/SlicedK.png "图 1: 在假设具有4个SM的GPU上，采用Sliced-K(Data-parallel)策略计算问题规模为384 × 384 × 128的GEMM的执行计划")
 
+图 1: 在假设具有4个SM的GPU上，采用Sliced-K(Data-parallel)策略计算问题规模为384 × 384 × 128的GEMM的执行计划
+
 ![SlicedK](./cutlass-v3.9.2-learning/images/Split-K-VS-Stream-K.png "图2: 在假设具有4个SM的GPU上，采用Split-K(Fixed-split)和Stream-K策略计算问题规模为384 × 384 × 128的GEMM的执行计划")
 
+图2: 在假设具有4个SM的GPU上，采用Split-K(Fixed-split)和Stream-K策略计算问题规模为384 × 384 × 128的GEMM的执行计划
+
 ### 未来计划
-在完成 Example 69 的复现后，将重点将 Cutlass 在 Hopper 架构下的example 复现完成，并更深入了解 Hopper 架构。
+在完成 Example 69 的复现后，将重点将 Cutlass 在 Hopper 架构下的 example 复现完成，并更深入了解 Hopper 架构。
 
 
 
