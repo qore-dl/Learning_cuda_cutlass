@@ -1,0 +1,444 @@
+第六章 流和并发
+
+本章内容：
+1.理解流和事件的本质
+2.理解网格级并发
+3.重叠内核执行和数据传输
+4.重叠 CPU 和 GPU 执行
+5.理解同步机制
+6.避免不必要的同步
+7.调整流的优先级
+8.注册设备回调函数
+
+用过 NVIDIA 可视化性能分析器显示应用程序执行的时间轴
+一帮来说，在 CUDA C 编程中有两个级别的并发：
+1. 内核级并发
+2. 网格级并发
+
+到目前为止，我们的关注点可能仅限于内核级的并发，在这一级别的并发中，
+单一的任务或内核被 GPU 的多个线程并行执行。
+前面几章已经介绍了提升内核性能的几种方法，它们分别是从编程模型、执行模型以及内存模型的角度进行介绍的。
+同时也介绍了通过命令行性能分析器来研究和分析内核行为的方法。
+
+在本章将研究网格级并发。
+在网格级并发中，多个内核在同一设备上同时执行，这往往会让设备利用率更好。
+在本章中，我们将学习到如何使用 CUDA 流实现网格级的并发。
+还将使用 CUDA 的可视化性能分析器 nvvp 将内核并发执行可视化。
+
+6.1 流和事件概述
+CUDA 流是一系列异步的 CUDA 操作，这些操作按照主机代码确定的顺序在设备上执行。
+流能封装这些操作，保持操作的顺序，允许操作在流中排队，并使它们在先前的操作之后执行。
+并且可以查询排队操作的状态。这些操作包括在主机与设备间进行数据传输，
+内核启动以及大多数由主机发起但是由设备处理的其他指令。
+流中操作的执行相对于主机总是异步的。
+CUDA runtime 决定何时可以在设备上执行操作。
+我们的任务是使用 CUDA 的 API 来确保一个异步操作在其运行结果被使用之前可以完成。
+在同一个 CUDA 流中的操作有严格的执行顺序，而在不同 CUDA 流中的操作在执行顺序上不受限制。
+使用多个流同时启动多个内核，可以实现网格级的并发。
+
+因为所有在 CUDA 流中排队的操作都是异步的，所以在主机与设备系统中可以重叠执行其他操作。
+在同一时间内，将流中排队的操作与其他有用的操作一起执行，可以隐藏执行那些操作的开销。
+在本章节中， CUDA 编程的一个典型模式是一下形式：
+1. 将输入数据从主机移动到设备上；
+2. 在设备上执行一个内核；
+3. 将结果从设备移动回主机中。
+
+在许多情况下，执行内核比传输数据耗时更多。在这种情况下，可以完全隐藏 CPU 和 GPU 之间的通信延迟。
+通过将内核执行和数据传输调度到不同的流中，这些操作可以重叠。
+程序的总运行时间将被缩短。流在 CUDA 的 API 调用粒度上可实现流水线或双缓冲技术。
+
+CUDA 的 API 函数一般分为同步或异步。具有同步行为的函数会阻塞主机端线程，直到它们完成。
+具有异步行为的函数被调用后，会立即将控制权归还给主机。
+异步函数和流是在 CUDA 中构建网格级并发的两个基本支柱。
+
+从软件的角度来看，CUDA 操作在不同的流中并发运行；
+而从硬件上来看，不一定总是如此。根据 PCIe 总线争用或每个 SM 资源的可用性，
+完成不同的 CUDA 流可能仍然需要互相等待。
+
+在本章中，你可以仔细研究在有多种计算能力的设备上流是如何运行的。
+
+6.1.1 CUDA 流
+所有的 CUDA 操作（包括内核和数据传输）都在一个流中显式或隐式地运行。
+流分为两种类型：
+1. 隐式声明的流（空流）
+2. 显式声明的流（非空流）
+如果没有显式地指定一个流，那么内核启动和数据传输将默认空流。
+本书中前面章节所使用的例子都是空流或默认流。
+
+另一方面，非空流可以被显式地创建和管理。如果想要重叠不同的 CUDA 操作，
+必须使用非空流。基于流的异步的内核启动和数据传输支持以下类型的粗粒度并发：
+1.重叠主机计算和设备计算
+2.重叠主机计算和主机与设备间的数据传输
+3.重叠主机与设备间的数据传输和设备计算
+4.并发设备计算
+思考下面使用默认流的代码：
+cudaMemcpy(...,cudaMemcpyHostToDevice);
+kernel<<<grid,block>>>(...);
+cudaMemcpy(...,cudaMemcpyDeviceToHost);
+
+要想理解一个 CUDA 程序，应该从设备和主机两个角度去考虑。
+从设备的角度来看，上述代码的所有3个操作都被发布到默认的流中，
+并且按发布顺序执行。设备不知道其他被执行的主机操作。
+从主机的角度来看，每个数据传输都是同步的，在等待它们完成时，
+将强制空闲主机时间。
+内核启动是异步的，所以无论内核是否完成，主机的应用程序几乎都立即恢复执行。
+这种内核启动的默认异步行为使它可以直接重叠设备和主机计算。
+
+数据传输也可以被异步发布，但是必须显式地设置一个 CUDA 流来装载它们。
+CUDA runtime 提供了以下cudaMemcpy函数的异步版本：
+
+cudaError_t cudaMemcpyAsync(void* dst,const void* src,
+size_t count,cudaMemcpyKind kind,cudaStream_t stream=0);
+
+请注意附加的流标识符作为第五个参数。在默认的情况下，流标识符被设置为默认流。
+这个函数与主机是异步的，所以调用发布后，控制权将立即返回到主机。
+将复制操作和非空流进行关联是很容易的，但是首先需要使用如下代码创建一个非空流：
+
+cudaError_t cudaStreamCreate(cudaStream_t* pStream);
+
+cudaStreamCreate 创建了一个可以显式管理的非空流。
+之后，返回到 pStream 中的流就可以被当做流参数提供给 cudaMemcpyAsync 和
+其他异步 CUDA 的 API 函数来使用。在使用异步 CUDA 函数时，
+常见的疑惑在于，它们可能会从先前启动的异步操作中返回错误代码。
+因此返回错误的 API 调用并不一定是产生错误的那个调用。
+
+当执行异步数据传输时，必须使用固定（或非分页的）主机内存。
+可以使用 cudaMallocHost 函数 或 cudaHostAlloc 函数分配固定内存：
+cudaError_t cudaMallocHost(void **ptr,size_t size);
+cudaError_t cudaHostAlloc(void **pHost,size_t size,unsigned int flags);
+
+在主机虚拟内存中固定分配，可以确保其在 CPU 内存中的物理位置在
+应用程序的整个生命周期中保持不变。否则，操作系统可以随时自由改变
+主机虚拟内存的物理位置。如果在没有固定主机内存的情况下执行一个异步CUDA 转移操作，
+操作系统可能会在物理层面上面移动数组，
+而 CUDA 操作runtime将该数组移动到设备中，这样会导致未定义的行为。
+
+在非默认流中启动内核，必须在内核执行配置中提供一个流标识符作为第四个参数：
+kernel_name<<<grid,block,sharedMemSize,stream>>>(argument list);
+
+一个非默认流声明如下：
+cudaStream_t stream;
+
+非默认流可以使用如下方式进行创建：
+cudaStreamCreate(&stream);
+
+可以使用如下代码释放流中的资源：
+cudaError_t cudaStreamDestroy(cudaStream_t stream);
+
+在一个流中，当 cudaStreamDestroy 函数被调用时，如果该流中仍有未完成的工作，
+cudaStreamDestroy 函数将立即返回，当流中所有的工作都已完成时，
+与流相关的资源将被自动释放。
+
+因为所有的 CUDA 流操作都是异步的，所以 CUDA 的 API 提供了两个函数来检查
+流中所有操作是否都已经完成：
+cudaError_t cudaStreamSynchronize(cudaStream_t stream);
+cudaError_t cudaStreamQuery(cudaStream_t stream);
+
+cudaStreamSynchronize 强制阻塞主机，直到在给定流中所有的操作都完成了。
+cudaStreamQuery 会检查流中所有操作是否都已经完成，但在它们完成前不会阻塞主机。
+当所有操作都完成时，cudaStreamQuery 函数都返回 cudaSucess，当一个或多个操作
+仍然在执行或等待执行时，返回cudaErrorNotReady。
+
+为了说明在实践中如何使用 CUDA 流，下面是一个在多个流中调度 CUDA 操作的常见模式：
+
+for(int i=0;i<nStreams;i++){
+    int offset = i * bytesPerStream;
+    cudaMemcpyAsync(&d_a[offset],&a[offset],bytesPerStream,streams[i]);
+    kernel<<<grid,block,0,streams[i]>>> (&d_a[offset]);
+    cudaMemcpyAsync(&a[offset],&d_a[offset],bytesPerStream,streams[i]);
+}
+
+for (int i=0;i<nStreams;i++){
+    cudaStreamSynchronize(streams[i]);
+}
+
+图 6-1 所示为一个简单的时间轴，展示了使用3个流的 CUDA 操作。
+数据传输和内核计算均匀分布在3个并发流中。
+
+串行: |内存拷贝（H2D）   |kernel运行     ||内存拷贝（H2D）   |
+                                 '
+并发: |H2D |K1 |D2H |            '   性能改进空间
+           |H2D |K1 |D2H |       '
+                |H2D |K1 |D2H |  '
+
+                        图 6-1 
+
+在图 6-1 中，数据传输操作虽然分布在不同的流中，但是它并没有并发执行。
+这是由一个共享资源导致的：PCIe 总线。
+虽然从编程模型的角度来看，这些操作是独立的，但是因为它们共享同一个相同的硬件资源，
+所以它们的执行必须是串行的。
+具有 双工 PCIe 总线的设备可以重叠两个数据的传输，
+但它们在不同的流中以及不同的方向上。
+在图 6-1 中可以观察到，
+在一个流中从主机到设备的数据传输与另一个流中从设备到主机的数据传输是可以重叠的。
+
+并发内核的最大数量是依赖设备而确定的。Fermi 设别支持 16 路并发，
+Kepler设备支持 32 路并发。设备上可用的计算资源进一步限制了并发内核的数量，
+如共享内存和寄存器大小。在本章后面的例子中将会探索这些局限性。
+
+6.1.2 流调度 
+从概念上讲，所有的流可以同时运行。但是，当讲流映射到物理硬件时并不总是这样的。
+本节将说明如何通过硬件调度多个 CUDA 流内的并发内核操作。
+
+6.1.2.1 虚假的依赖关系
+虽然 Fermi GPU 支持 16 路并发，即多达16个网格同时执行，
+但是所有的流最终是被多路复用到单一的硬件工作队列中的。
+当选择一个网格执行时，在队列前面的任务由 CUDA runtime 调度。 
+runtime 检查任务的依赖关系，如果仍有任务在执行，
+那么将等待要调度的任务所依赖的任务执行完。
+最后，当所有依赖关系都执行结束时，新任务被调度到可用的 SM 中。
+这种单一流水线可能会导致虚假的依赖关系。如图 6-2 所示，最终只有：
+C-P；R-X 这两个任务对被并行执行，因为在启动其他网格前，runtime 将会被阻塞。
+在工作队列中，一个被阻塞的操作会将该队列中该操作后面的所有操作都阻塞，
+即使它们属于不同的流：
+
+重叠可能只发生在流的边缘：
+
+《-A-B-C P-Q-R X-Y-Z
+单一硬件的工作队列
+
+流1： A-B-C； 流2：P-Q-R；流3：X-Y-Z
+     图 6-2
+
+6.1.2.2 Hyper-Q 技术
+Kepler GPU 家族中的 Hyper-Q 技术，使用多个硬件工作队列，从而减少了虚假的依赖关系。
+Hyper-Q 技术通过在主机和设备之间维持多个硬件管理上的连接，
+允许多个 CPU 线程或进程在单一 GPU 上同时启动工作。
+被 Fermi 架构中虚假依赖关系限制的应用程序，在不改变任何现有代码的情况下可以看到显著的性能提升。
+Kepler GPU 使用 32 个硬件工作队列，每个流分配一个工作队列。
+如果创建的流超过 32 个，多个流将共享一个硬件工作队列。
+这样做的结果是可以实现全流级并发，并且其具有最小的虚假流间依赖关系。
+图 6-3 展示了一个精简的案例，3个流在3个硬件工作队列上：
+
+《-A-B-C 
+《-P-Q-R
+《-X-Y-Z
+多硬件工作队列
+流1： A-B-C； 流2：P-Q-R；流3：X-Y-Z
+     图 6-3
+
+6.1.3 流的优先级
+对计算能力为3.5 或更高的设备，可以给流分配优先级。
+使用下面的函数可以创建一个具有特定优先级的流：
+cudaError_t cudaStreamCreateWithPriority(cudaStream_t* pStream,unsigned int flags,int priority);
+这个函数创建了一个具有指定整数优先级的流，并在 pStream 中返回一个句柄。
+这个优先级是与pStream中的工作调度相关的。
+高优先级流的网格队列可以优先占有低优先级流已经执行的工作。
+流优先级不会影响数据传输操作，只对计算内核有影响。
+如果指定的优先级超出了设备定义的范围，他会被自动限制在定义范围内的最低值或最高值。
+对于一个给定的设备，可以使用以下函数查询优先级的允许范围：
+cudaError_t cudaDeviceGetStreamPriorityRange(int *leastPriority,int *greatestPriority);
+这个函数的返回值存放在 leastPriority 和 greatestPriority 中，分别对应于当前设备
+的最低和最高优先级。按照惯例，一个较低的整数值表示更高的优先级。
+如果当前的设备不支持流优先级，cudaDeviceGetStreamPriorityRange 将 0 返回给这两个参数。
+
+6.1.4 CUDA 事件
+CUDA 中事件本质上是 CUDA 流中的标记，它与该流内操作流中特定点相关联。
+可以使用事件来执行以下两个基本任务：
+1. 同步流的执行
+2. 监控设备的进展
+
+CUDA 的 API 提供了在流中任意点插入事件以及查询事件完成的函数。
+只有当一个给定 CUDA 流中先前的所有操作都执行结束后，
+记录在该流内事件才会起作用（即完成/finished）。
+在默认流中指定的事件，适用于 CUDA 流中先前所有的操作。
+
+6.1.4.1 事件创建和销毁
+一个事件声明如下：
+cudaEvent_t event;
+
+一旦被声明，事件可以使用如下代码进行创建：
+cudaError_t cudaEventCreate(cudaEvent_t* event);
+
+使用如下代码销毁一个事件：
+cudaError_t cudaEventDestroy(cudaEvent_t event);
+当 cudaEventDestroy 函数被调用时，如果事件尚未起作用，则调用立即返回，
+当事件被标记完成时，自动释放与该事件相关的资源。
+
+6.1.4.2 记录事件和计算运行时间
+事件在流执行中标记了一个点。它们可以用来检查正在执行的流操作是否已经到达了给定点。
+它们可以被看作是添加到 CUDA 流中的操作，当从工作队列中取出时，这个操作的唯一作用
+就是通过主机端标志来指示完成的状态。一个事件使用如下函数排队进入 CUDA 流： 
+cudaError_t cudaEventRecord(cudaEvent_t event,cudaStream_t stream=0);
+已经配对进入 CUDA 流中的事件可以用于等待或测试在指定流中先前操作的完成情况。
+等待一个事件会阻塞主机线程的调用，它可以用下面的函数来执行：
+cudaError_t cudaEventSynchronize(cudaEvent_t event);
+
+对于流来说，cudaEventSynchronize 函数类似于 cudaStreamSynchronize 函数，但
+cudaEventSynchronize 函数运行主机等待流执行的中间点。
+
+可以使用如下代码测试一个事件是否可以不用阻塞主机应用程序来完成：
+cudaError_t cudaEventQuery(cudaEvent_t event);
+
+cudaEventQuery 函数类似于 cudaStreamQuery 函数，但这是对于事件来说的。
+下面的函数用来计算被两个事件标记的 CUDA 操作的运行时间：
+cudaError_t cudaEventElapsedTime(float *ms,cudaEvent_t start,cudaEvent_t stop);
+
+此函数返回事件启动和停止之间的运行时间，以ms为单位。
+事件的启动和停止不需要在同一个 CUDA 流中。 
+请注意，如果在非空流中记录启动事件或停止事件时，返回的时间可能比预期的要大。
+这是因为 cudaEventRecord 函数是异步的，并且不能保证计算的延迟正好处于两个事件之间。
+下面的示例代码演示了如何将事件用于时间设备操作：
+// create two events
+cudaEvent_t start,stop;
+cudaEventCreate(&start);
+cudaEventCreate(&stop);
+
+//record start event on the default stream 
+cudaEventRecord(start);
+
+//execute the kernel
+kernel<<<grid,block>>>(arguments);
+
+//record stop event on the default stream
+cudaEventRecord(stop);
+
+//wait until the stop event complete
+cudaEventSynchronize(stop);
+
+//calculate the elapsed  time between two events;
+float time;
+cudaEventElapsedTime(&time,start,stop);
+
+//clean up the two events
+cudaEventDestroy(start);
+cudaEventDestroy(stop);
+
+在这里，启动和停止事件被默认放置到了空流中。
+一个时间戳记录空流开始时的启动事件，
+另一个时间戳记录空流结束时的停止事件。
+然后，使用cudaEventElapsedTime 函数获得到两个事件之间的运行时间。
+
+6.1.5 流同步
+在非默认流中，所有的操作对于主机线程都是非阻塞的，
+因此会遇到需要在一个流中运行主机和运算操作同步的情况。
+从主机的角度来说，CUDA 操作可以分为两大类：
+1. 内存相关操作
+2. kernel启动
+
+对于主机来说，内核启动总是异步的。许多内存操作本质上是同步的（如cudaMemcpy），
+但是 CUDA runtime 也为内存操作的执行提供了异步函数。
+正如前面介绍的，有两种类型的流：
+1. 异步流（非空流）
+2. 同步流（空流/默认流）
+在主机上，非空流是一个异步流，其上所有的操作都不阻塞主机执行。
+另一方面，被隐式声明的空流是主机上的同步流。
+大多数添加到空流上的操作都会导致主机在先前所有的操作上阻塞，主要的异常是内核启动。
+非空流可以进一步划分为以下两种类型：
+1.阻塞流
+2.非阻塞流
+虽然非空流在主机上是非阻塞的，但是非空流内的操作可以被空流中的操作所阻塞。
+如果一个非空流是阻塞流，则空流可以阻塞该非空流中的操作。
+如果一个非空流是非阻塞流，则它不会阻塞空流中的操作。
+在下面的部分中，将介绍如何使用阻塞流和非阻塞流。
+
+6.1.5.1 阻塞流和非阻塞流
+使用cudaStreamCreate 函数创建的流是阻塞流，这意味着在这些流中操作执行可以被阻塞，
+一直等到空流中先前的操作执行结束。
+空流是隐式流，在相同的 CUDA context 中，它和其他所有的阻塞流同步。
+一般情况下，当操作被发布到空流中，在该操作被执行之前，
+CUDA 上下文会等待所有先前的操作发布到所有的阻塞流中。
+此外，任何发布到阻塞流中的操作，会被挂起等待，直到空流中先前的操作执行结束才开始执行。
+例如，下面的代码中，在stream_1 中启动 kernel 函数：kernel_1。
+在空流中启动 kernel_2，在stream_2 中启动kernel_3:
+
+kernel_1<<<1,1,0,stream_1>>>();
+kernel_2<<<1,1>>>();
+kernel_3<<<1,1,0,stream_2>>>();
+
+这段代码的结果是，直到kernel 函数 kernel_1 执行结束，
+kernel_2 才会在 GPU 上开始执行，kernel_2 执行结束后，kernel_3才开始执行。
+请注意，从主机的角度来看，每一个kernel启动仍然是异步和非阻塞的。（即控制权马上回到主机，但是在设备上实际运行时出现流间阻塞）
+
+CUDA runtime 提供了一个定制函数，它是关于空流的非空流行为，代码如下：
+cudaError_t cudaStreamCreateWithFlags(cudaStream_t *pStream,unsigned int flags);
+
+flags 参数决定了所创建流的行为。flags 的有效值如下所示：
+cudaStreamDefault: default stream creation flag (blocking)
+cudaStreamNonBlocking: asynchronous stream creation flag (non-blocking)
+
+指定cudaStreamNonBlocking 使得非空流对于空流的阻塞行为失效。
+在前面的例子中，如果stream_1 和 stream_2 都使用了cudaStreamNonBlocking
+进行创建，那么所有kernel函数的执行都不会被阻塞，都不用等待其他kernel函数执行结束。
+
+6.1.5.2 隐式同步
+CUDA 包括两种类型的主机-设备同步：
+显式和隐式。在前面已经介绍了许多执行显式同步的函数，
+如cudaDeviceSynchronize, cudaStreamSynchronize 以及 cudaEventSynchronize 函数。
+这些函数被主机显式调用，使得在设备上任务执行和主机线程同步。在应用程序的逻辑点钟，可以手动插入显式同步调用。
+
+前文中也已经介绍了隐式同步的例子。例如，调用 cudaMemcopy 函数，可以隐式同步设备和主机。
+这是由于主机的应用程序在数据传输完成之前会被阻塞。然而，由于此函数的主要目的不是同步，
+因此其同步的产生是隐式的。理解隐式同步是很重要的，因为无意中该调用隐式同步主机和设备的函数，
+可能会导致意想不到的性能下降。
+
+隐式同步在 CUDA 编程中特别吸引编程人员的注意，因为带有隐式同步行为的运行函数可能会导致不必要的阻塞，
+这种阻塞通常发生在设备层面。许多与内存相关的操作意味着当前设备上所有先前的操作都有阻塞，例如：
+1. 锁页主机内存分配
+2. 设备内存分配
+3. 设备内存初始化
+4. 同一设备两个地址之间的内存复制
+5. L1 Cahce/shared memory 配置的修改
+
+6.1.5.3 显式同步
+CUDA runtime 在网格级支持显式同步 CUDA 程序的几种方法：
+1. 同步设备
+2. 同步流
+3. 同步流中的事件
+4. 使用事件跨流同步
+
+使用下述函数可以阻塞一个主机线程直到设备完成所有先前的任务：
+cudaError_t cudaDeviceSynchronize(void);
+
+这个函数是主机线程等待直到所有和当前设备相关的计算和通信完成。
+因为这是一个比较重量级的同步函数，所以应该尽量少使用该函数，
+以免拖延主机运行。
+
+使用 cudaStreamSynchronize 函数可以阻塞主机线程直到流中所有的操作完成为止，
+使用 cudaStreamQuery 函数可以完成非阻塞测试，两个函数代码如下：
+cudaError_t cudaStreamSynchronize(cudaStream_t stream);
+cudaError_t cudaStreamQuery(cudaStream_t stream);
+
+使用下述的 cudaEventSynchronize 函数和cudaEventQuery 函数，
+CUDA 事件也可以用于细粒度阻塞和同步：
+cudaError_t cudaEventSynchronize(cudaEvent_t event);
+cudaError_t cudaEventQuery(cudaEvent_t event);
+
+此外，cudaStreamWaitEvent 函数提供了一个使用 CUDA 事件引入流间依赖关系比较灵活的方法：
+cudaError_t cudaStreamWaitEvent(cudaStream_t stream,cudaEvent_t event);
+
+在流中执行任何排队的操作之前，并且在cudaStreamWaitEvent 代用之后，
+cudaStreamWaitEvent 函数能使指定流等待指定事件。该事件可能与同一个流相关，
+也可能与不同的流相关。在后者的情况下，这个函数执行跨流同步，如图6-4所示。
+在这里，流 2 发布的等待可以确保在流 1 创建的事件是满足依赖关系的，然后继续：
+
+时间---------------------------------------'------------》
+   创建于流1的一个事件                      ' 之前创建的事件进行了Record，即完成，入队列被调度
+流 1 |   |                                 '    |
+流 2   |                                  |'          |  
+                                           '
+                                    在流 2 中等待事件
+
+                    图 6-4
+
+6.1.5.4 可配置事件
+CUDA runtime 提供了一种方式来定制事件的行为和性能，代码如下：
+cudaError_t cudaEventCreateWithFlags(cudaEvent_t* event,unsigned int flags);
+有效地标志包括下面 4 个：
+cudaEventDefault
+cudaEventBlockingSync
+cudaEventDisableTiming
+cudaEventInterprocess
+
+其中，cudaEventBlockingSync 指定使用cudaEventSynchronize 函数同步事件
+会阻塞调用的线程。cudaEventSynchronize 函数的默认操作是围绕事件进行的，
+使用 CPU 周期不断检查事件的状态。将标志设置成cudaEventBlockingSync，
+调用的线程在另一个将要休眠的线程或进程上运行，
+而不是放弃 CPU 核（持续检查占用资源），直到事件满足依赖关系。
+如果其他有用的工作可以被执行，那么这样会减少 CPU 周期的浪费，但是这也会
+使事件满足依赖关系以及激活调用线程之间的延迟被加长。
+
+设置cudaEventDisableTiming 表明创建的事件只可以用来进行同步，
+不需要记录时序数据。除去时间戳花费的总开销提高了调用
+cudaStreamWaitEvent 和 cudaEventQuery 函数调用的性能。
+标志设置为cudaEventInterprocess 表明创建的时间可能被用作（CPU）进程间事件。
