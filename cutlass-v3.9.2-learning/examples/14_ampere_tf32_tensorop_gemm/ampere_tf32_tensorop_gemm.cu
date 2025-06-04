@@ -58,7 +58,7 @@ fp32 data by using NVIDIA Ampere architecture.
 #include "cutlass/util/reference/host/tensor_fill.h"
 #include "cutlass/util/tensor_view_io.h"
 
-// #include "helper.h"
+// #include "../common/helper.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

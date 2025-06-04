@@ -50,7 +50,7 @@
 #include "cutlass/util/reference/device/tensor_relu.h"
 
 #include "reference/device/tensor_scale_bias.h"
-#include "helper.h"
+#include "../common/helper.h"
 
 #define CHECK_GT(val1, val2) \
     if((val1) <= (val2)) \

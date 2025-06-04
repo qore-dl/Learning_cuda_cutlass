@@ -80,7 +80,7 @@
 
 #include <iostream>
 
-#include "helper.h"
+#include "../common/helper.h"
 
 using namespace cute;
 

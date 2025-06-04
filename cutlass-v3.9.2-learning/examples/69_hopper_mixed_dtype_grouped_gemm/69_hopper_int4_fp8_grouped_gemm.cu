@@ -83,7 +83,7 @@
 #include "cutlass/util/reference/host/gett.hpp"
 #include "cutlass/util/mixed_dtype_utils.hpp"
 
-#include "helper.h"
+#include "../common/helper.h"
 #include "grouped_mixed_dtype_utils.hpp"
 
 using namespace cute;

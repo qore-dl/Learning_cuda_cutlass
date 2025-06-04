@@ -227,7 +227,7 @@ to check correctness.
 #include "cutlass/util/reference/host/convolution.h"
 #include "cutlass/util/tensor_view_io.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 // Data types for input and output tensors
 // and computation between elements

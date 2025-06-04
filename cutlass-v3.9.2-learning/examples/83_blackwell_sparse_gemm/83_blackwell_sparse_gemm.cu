@@ -77,7 +77,7 @@
 #include "cutlass/transform/kernel/sparse_gemm_compressor.hpp"
 #include "cutlass/transform/device/transform_universal_adapter.hpp"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 using namespace cute;
 

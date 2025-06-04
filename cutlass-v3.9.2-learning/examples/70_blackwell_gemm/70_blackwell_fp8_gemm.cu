@@ -87,7 +87,7 @@
 #include "cutlass/util/reference/host/gett.hpp"
 
 
-#include "helper.h"
+#include "../common/helper.h"
 
 using namespace cute;
 

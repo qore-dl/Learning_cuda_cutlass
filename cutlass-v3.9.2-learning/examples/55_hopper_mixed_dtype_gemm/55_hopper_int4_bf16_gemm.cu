@@ -105,7 +105,7 @@
 #include "cutlass/util/reference/device/tensor_compare.h"
 #include "cutlass/util/mixed_dtype_utils.hpp"
 
-#include "helper.h"
+#include "../common/helper.h"
 #include "mixed_dtype_utils.hpp"
 
 using namespace cute;

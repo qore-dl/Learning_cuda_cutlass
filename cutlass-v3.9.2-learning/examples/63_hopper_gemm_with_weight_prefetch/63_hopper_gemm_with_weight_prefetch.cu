@@ -122,7 +122,7 @@
 #include "collective/builder.hpp"
 #include "kernel/sm90_gemm_tma_warpspecialized_with_prefetch.hpp"
 
-#include "helper.h"
+#include "../common/helper.h"
 #include "gemm_with_weight_prefetch_commandline.hpp"
 
 using namespace cute;

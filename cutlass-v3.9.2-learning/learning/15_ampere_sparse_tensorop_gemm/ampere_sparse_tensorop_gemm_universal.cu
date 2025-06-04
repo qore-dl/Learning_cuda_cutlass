@@ -194,7 +194,7 @@ int run(){
         int64_t(),
         int64_t(),
         int64_t(),
-        tensor_a.layout().stride(0),
+        tensor_a.layout().stride(0), //layout object containing stride and mapping function
         tensor_b.layout().stride(0),
         tensor_c.layout().stride(0),
         tensor_d.layout().stride(0),

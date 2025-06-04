@@ -28,7 +28,7 @@ Cutlass-1.3 sgemm: https://github.com/NVIDIA/cutlass/blob/master/examples/00_bas
 #include <vector>
 
 // Helper methods to check for errors
-// #include "helper.h"
+// #include "../common/helper.h"
 
 //
 // CUTLASS includes needed for single-precision GEMM kernel

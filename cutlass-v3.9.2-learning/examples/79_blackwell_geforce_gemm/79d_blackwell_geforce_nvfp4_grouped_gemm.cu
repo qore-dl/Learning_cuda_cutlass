@@ -91,7 +91,7 @@
 #include "cutlass/util/reference/host/gett.hpp"
 #include "cutlass/util/reference/host/tensor_norm.h"
 #include "cutlass/util/reference/host/tensor_compare.h"
-#include "helper.h"
+#include "../common/helper.h"
 using namespace cute;
 
 using ProblemShape = cutlass::gemm::GroupProblemShape<Shape<int,int,int>>; // <M,N,K> per group

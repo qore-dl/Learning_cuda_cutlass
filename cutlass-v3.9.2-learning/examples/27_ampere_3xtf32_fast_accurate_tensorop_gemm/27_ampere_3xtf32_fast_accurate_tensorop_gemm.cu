@@ -79,7 +79,7 @@ Now, we have several different flavors of sgemm now in the profiler for Ampere. 
 #include "cutlass/util/reference/host/error_metrics.h"
 #include "cutlass/util/tensor_view_io.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

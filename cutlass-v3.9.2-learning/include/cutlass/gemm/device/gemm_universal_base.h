@@ -63,6 +63,11 @@ namespace device {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+/*
+GemmUniversalBase 作为 GemmUniversal 和 GemmUniversalStreamk 中的基类，我们对其相关源码进行阅读。
+给出相应地注释。
+*/
+
 
 template <typename GemmKernel_>
 class GemmUniversalBase {
@@ -98,6 +103,10 @@ public:
   using Operator = typename GemmKernel::Operator;
 
   /// Argument structure
+  /*
+  Arguments使用传入GemmKernel结构体的类型。
+  即 GemmUniversal::Arguments 或者GemmUniversalStreamk::Arguments。
+  */
   using Arguments = typename GemmKernel::Arguments;
 
 
@@ -115,6 +124,9 @@ protected:
   //
 
   // Device ordinal
+  /*
+  设备序号 device_ordinal_的初始值为-1。(见521行)记录了当前设备相关参数初始化已完成的设备的序号
+  */
   CUTLASS_THREAD_LOCAL static int device_ordinal_;
 
   /// Device SM count
@@ -127,8 +139,16 @@ protected:
 
   /// Initialize static thread-local members for the thread's current device,
   /// if necessary.
+  /*
+  在get_workspace_size，initialize 等函数中，均需解析arguments，因此我们需要调用init_params
+  在此时，我们的初始化过程中，对设备参数的设置是一个关键组成部分，这要求我们使用：init_device_props函数
+  */
   static Status init_device_props()
   {
+    /*
+    如果有必要，初始化线程当前设备的静态线程本地成员。
+    CUTLASS_TRACE_HOST 在 debug 模式下，打印文件名和行号。
+    */
     CUTLASS_TRACE_HOST("GemmUniversalBase::init_device_props()");
 
     cudaError_t cudart_result;
@@ -142,12 +162,20 @@ protected:
     }
 
     // Done if matches the current static member
+    /*
+    cudaGetDevice 返回当前正在使用的设备。
+    如果当前设备已经初始化了，则直接返回。
+    */
     if (current_ordinal == device_ordinal_) {
       // Already initialized
       return Status::kSuccess;
     }
 
     // Update SM count member
+    /*
+    cudaDeviceGetAttribute 返回有关设备的信息。
+    此时，初始化device_sms_，获取设备的SM的数量
+    */
     cudart_result = cudaDeviceGetAttribute (&device_sms_, cudaDevAttrMultiProcessorCount, current_ordinal);
     if (cudart_result != cudaSuccess) {
       CUTLASS_TRACE_HOST("  cudaDeviceGetAttribute() returned error " << cudaGetErrorString(cudart_result));
@@ -157,6 +185,20 @@ protected:
     // If requires more than 48KB: configure for extended, dynamic shared memory
     if constexpr (kSharedStorageSize >= (48 << 10))
     {
+      /*
+      cudaFuncSetAttribute 设置给定函数的属性：
+      cudaError_t cudaFuncSetAttribute(
+        const void *func,
+        cudaFuncAttribute attr,
+        int value
+      );
+      func: 内核函数的指针。这个参数指定了要设置属性的 CUDA 内核函数。
+      attr: 要设置的属性类型。这个参数是一个枚举类型 cudaFuncAttribute，用于指定要设置的具体属性。
+      value: 属性的值。这个参数指定了要为 attr 设置的具体值。
+
+      此处意味着，如果设备支持的 SharedMemory 大于48KB，
+      则更新 GemmKernel在SM 上动态分配的共享内存的最大容量的设置。
+      */
       cudart_result = cudaFuncSetAttribute(
         Kernel2<GemmKernel>,
         cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -168,6 +210,31 @@ protected:
     }
 
     // Update SM occupancy member
+    /*
+    设置 sm_occupancy_：cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags 是 CUDA Runtime API，
+    返回每个 SM 运行该 kernel 函数（Kernel2<GemmKernel>）时可以支持的最大活跃线程块数。
+
+    具体来说，cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags 用于计算每个多处理器（SM）上可以同时活动的
+    最大线程块数。这个函数考虑了特定的标志（flags），以便更准确地反映某些内核配置选项对占用率的影响。
+    函数原型如下：
+    cudaError_t cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
+      int *numBlocks,
+      const void *func,
+      int blockSize,
+      size_t dynamicSMemSize,
+      unsigned int flags
+    );
+    参数说明：
+    numBlocks: 指向一个整数的指针，用于存储计算得到的每个多处理器上可以同时活动的最大线程块数。
+    func: 内核函数的指针。指定要计算占用率的 CUDA 内核。
+    blockSize: 每个线程块中的线程数。指定内核的线程块大小。
+    dynamicSMemSize: 每个线程块动态分配的共享内存大小（以字节为单位）。
+    flags: 用于指定影响内核占用率计算的标志。可以用来调整计算方式或考虑特定的内核配置选项。
+    
+    返回值：
+    cudaSuccess: 如果函数成功执行，返回 cudaSuccess。
+    如果函数执行失败，返回相应的错误代码，开发者可以使用 cudaGetErrorString 获取错误信息。
+    */
     cudart_result = cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
       &sm_occupancy_,
       Kernel2<GemmKernel>,
@@ -200,15 +267,28 @@ protected:
   //
 
   /// Kernel parameters
+
+  /*
+  此处为GemmKernel 中的参数，因为kernel的具体类型不同，
+  可能是 GemmUniversal::Params 或者 GemmUniversalStreamk::Params。
+  具体可见：
+  include/cutlass/gemm/kernel/gemm_universal.h (GemmUniversal)
+  include/cutlass/gemm/kernel/gemm_universal_streamk.h (GemmUniversalStreamk)
+  */
   typename GemmKernel::Params params_;
 
 
   /// Initialize params member
+  /*
+  在熟悉了适应不同硬件配置下kernel属性设置的init_device_props函数的基础上，我们解析参数初始化函数 init_params
+  */
   Status init_params(Arguments const &args, CudaHostAdapter *cuda_adapter = nullptr)
   {
     int32_t device_sms = 0;
     int32_t sm_occupancy = 0;
 
+    // kEnableCudaHostAdapter 的值为宏CUTLASS_ENABLE_CUDA_HOST_ADAPTER，未启用。(79 行)
+    // CudaHostAdapter 类也没有实现。
     if constexpr (kEnableCudaHostAdapter) {
       CUTLASS_ASSERT(cuda_adapter);
 
@@ -217,7 +297,9 @@ protected:
       //
 
       if (cuda_adapter) {
-
+        /*
+        若实现了cuda 适配器
+        */
         Status status = cuda_adapter->query_occupancy(
           &device_sms,
           &sm_occupancy,
@@ -236,6 +318,9 @@ protected:
       }
     }
     else {
+      /*
+      若未指明 cuda 适配器，调用init_device_props函数得到 SM 数量和 SM 内的最大线程块数。
+      */
       CUTLASS_ASSERT(cuda_adapter == nullptr);
 
       // Initialize static device properties, if necessary
@@ -255,6 +340,9 @@ protected:
     }
 
     // Initialize params member
+    /*
+    得到一个 GemmUniversal::Params 或者 GemmUniversalStreamk::Params 对象。
+    */
     params_ = typename GemmKernel::Params(args, device_sms, sm_occupancy);
     return Status::kSuccess;
   }
@@ -266,12 +354,18 @@ public:
   //---------------------------------------------------------------------------------------------
 
   /// Determines whether the GEMM can execute the given problem.
+  /*
+  GemmUniversalBase::can_implement 判断能否实现： grid 是否超出以及形状是否满足对齐要求。
+  调用 kernel 的 GemmUniversal::can_implement 或 GemmUniversalStreamk::can_implement 进一步检查。
+  */
   static Status can_implement(Arguments const &args, CudaHostAdapter *cuda_adapter = nullptr)
   {
     CUTLASS_TRACE_HOST("GemmUniversalBase::can_implement()");
 
     if (!kEnableCudaHostAdapter || cuda_adapter) {
-
+      /*
+      获取网格规模，判断GPU是否可以承载网格规模
+      */
       dim3 grid = get_grid_shape(args, cuda_adapter);
 
       if (!(grid.y <= std::numeric_limits<uint16_t>::max() &&
@@ -298,7 +392,9 @@ public:
       }
 
     }
-
+    /*
+    调用 kernel 的 GemmUniversal::can_implement 或 GemmUniversalStreamk::can_implement 进一步检查。
+    */
     return GemmKernel::can_implement(args);
   }
 
@@ -307,16 +403,83 @@ public:
   /// geometry expressed by these arguments
   static size_t get_workspace_size(Arguments const &args, CudaHostAdapter *cuda_adapter = nullptr)
   {
+    /*
+    返回由这些参数表示的问题几何形状所需的工作区大小（以字节为单位）。
+    */
     CUTLASS_TRACE_HOST("GemmUniversalBase::get_workspace_size()");
 
     // Initialize parameters from args
+    /*
+    首先创建一个 GemmUniversalBase 对象。
+    */
     GemmUniversalBase base;
+    /*
+    然后调用 GemmUniversalBase::init_params 初始化参数。
+    */
     if (base.init_params(args, cuda_adapter) != Status::kSuccess) {
       return 0;
     }
 
     // Get size from parameters
+
     size_t workspace_bytes = base.params_.get_workspace_size();
+
+    /*
+    实质上是通过GemmKernel 中的具体workspace计算，
+    例如，调用 UniversalParamsBase::get_workspace_size 或者 
+    GemmUniversalStreamk::Params::get_workspace_size 函数得到 kernel 需要的全局内存工作空间大小。
+    */
+
+    /*
+    例如，对于kernel::GemmUniversalBase 而言，在data-parallel 和split-k情况下估算如下：
+    /// Returns the workspace size (in bytes) needed for this problem geometry
+    size_t get_workspace_size() const
+    {
+    size_t workspace_bytes = 0;
+    if (mode == GemmUniversalMode::kGemmSplitKParallel)
+    {
+      // Split-K parallel always requires a temporary workspace
+      workspace_bytes =
+        sizeof(ElementC) *
+        size_t(batch_stride_D) *
+        size_t(grid_tiled_shape.k());
+    }
+    else if (mode == GemmUniversalMode::kGemm && grid_tiled_shape.k() > 1)
+    {
+      // Serial split-K only requires a temporary workspace if the number of partitions along the
+      // GEMM K dimension is greater than one.
+      workspace_bytes = sizeof(int) * size_t(grid_tiled_shape.m()) * size_t(grid_tiled_shape.n());
+    }
+
+    return workspace_bytes;
+    }
+    在 stream-k的情况下，需要：1. Split-K 时临时存储partial 计算的结果 + 进行 partial 之间的reduction的结果，需要相应的存储空间：
+    /// Returns the workspace size (in bytes) needed for these parameters
+    size_t get_workspace_size() const
+    {
+      return
+        get_barrier_workspace_size() +
+        get_partials_workspace_size();
+    }
+
+    /// Get the workspace size needed for barrier
+    size_t get_barrier_workspace_size() const
+    {
+      // For atomic reduction, each SK-block needs a synchronization flag.  For parallel reduction,
+      // each reduction block needs its own synchronization flag.
+      int sk_blocks = block_mapping.sk_regions() * block_mapping.sk_blocks_per_region();
+      int num_flags = fast_max(sk_blocks, block_mapping.reduction_blocks);
+
+      return cacheline_align_up(sizeof(typename Barrier::T) * num_flags);
+    }
+
+    /// Get the workspace size needed for intermediate partial sums
+    size_t get_partials_workspace_size() const
+    {
+      int sk_blocks = block_mapping.sk_regions() * block_mapping.sk_blocks_per_region();
+      return cacheline_align_up(kWorkspaceBytesPerBlock * sk_blocks);
+    }
+    */
 
     CUTLASS_TRACE_HOST("  workspace_bytes: " << workspace_bytes);
     return workspace_bytes;
@@ -329,12 +492,45 @@ public:
     CUTLASS_TRACE_HOST("GemmUniversalBase::get_grid_shape()");
 
     // Initialize parameters from args
+    /*
+    首先创建一个 GemmUniversalBase 对象。
+    */
     GemmUniversalBase base;
+    /*
+    然后调用 GemmUniversalBase::init_params 初始化参数。
+    */
     if (base.init_params(args, cuda_adapter) != Status::kSuccess) {
       return dim3(0,0,0);
     }
 
     // Get dims from parameters
+    /*
+    调用GemmKernel具体的grid维度获取方式，得到网格维度：
+    例如：
+    GemmUniversalStreamk::Params::get_grid_dims 函数：
+    // Initialize the block mapping structure
+      block_mapping = ThreadblockSwizzle( // block 在 SM上或者grid上调度的方式
+        args.mode,
+        args.problem_size,
+        {ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK},
+        args.batch_count,
+        sm_occupancy,
+        device_sms,
+        avail_sms,
+        sizeof(ElementA),
+        sizeof(ElementB),
+        sizeof(ElementC),
+        Epilogue::kAccumulatorFragments);
+    }
+    /// Returns the grid extents in thread blocks to launch
+    dim3 get_grid_dims() const
+    {
+      return block_mapping.get_grid_dims();
+    }
+    
+
+    
+    */
     dim3 grid_dims = base.params_.get_grid_dims();
 
     CUTLASS_TRACE_HOST(
@@ -345,7 +541,11 @@ public:
   }
 
 
-  /// Returns the maximum number of active thread blocks per multiprocessor
+  /// Returns the maximum number of active thread blocks per multiprocessor'
+  /*
+  与 GemmUniversalBase::init_params 中的操作类似。
+  利用 init_device_props() 计算一个 SM 中可以支持的最大active block 的数量
+  */
   static int maximum_active_blocks(CudaHostAdapter *cuda_adapter = nullptr)
   {
     CUTLASS_TRACE_HOST("GemmUniversalBase::maximum_active_blocks()");
@@ -502,6 +702,9 @@ public:
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Device ordinal
+/*
+device_ordinal_的初始值为-1。
+*/
 template <typename GemmKernel_>
 CUTLASS_THREAD_LOCAL int GemmUniversalBase<GemmKernel_>::device_ordinal_ = -1;
 

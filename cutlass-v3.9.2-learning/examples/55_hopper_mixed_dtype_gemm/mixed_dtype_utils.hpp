@@ -45,7 +45,7 @@
 
 #include <cuda.h>
 #include <numeric>
-#include "helper.h"
+#include "../common/helper.h"
 
 enum MixedDtypeGemmMode {
   ConvertOnly,

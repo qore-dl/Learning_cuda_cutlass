@@ -77,7 +77,7 @@ Now, we have two different flavors of SSYMM in the profiler for Ampere:
 #include "cutlass/util/reference/host/error_metrics.h"
 #include "cutlass/util/tensor_view_io.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 #if CUTLASS_ENABLE_CUBLAS
 #include <cublas_v2.h>

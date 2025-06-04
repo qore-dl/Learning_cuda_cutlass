@@ -61,7 +61,7 @@ epilogue/threadblock/epilogue_gemm_k_reduction.h
 #include "cutlass/util/reference/host/tensor_fill.h"
 #include "cutlass/util/reference/device/convolution.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 // The code section below describes datatype for input, output tensors and computation between
 // elements 

@@ -117,7 +117,7 @@
 #include "cutlass/experimental/distributed/kernel/dist_gemm_kernel_wrapper.hpp"
 #include "cutlass/experimental/distributed/schedules/dist_gemm_1d_schedules.hpp"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 // Distributed GEMM helpers
 #include "dist_gemm_helpers.h"

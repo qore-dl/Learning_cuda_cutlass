@@ -66,7 +66,7 @@ This example uses Ampere fp64 tensore core Affine2 GEMM as an example.  SIMT
 #include "cutlass/util/reference/host/tensor_copy.h"
 #include "cutlass/util/reference/host/tensor_fill.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 // The code section below describes datatype for input, output tensors and computation between
 // elements 

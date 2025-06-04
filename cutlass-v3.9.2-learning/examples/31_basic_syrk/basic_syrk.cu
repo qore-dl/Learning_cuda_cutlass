@@ -55,7 +55,7 @@
 #include <vector>
 
 // Helper methods to check for errors
-#include "helper.h"
+#include "../common/helper.h"
 
 //
 // CUTLASS includes needed for double-precision SYRK kernel

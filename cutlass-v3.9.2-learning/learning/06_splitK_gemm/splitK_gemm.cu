@@ -151,7 +151,7 @@ In this example, we later on launch a reference gemm kernel (from CUTLASS utilit
 #include "cutlass/util/reference/host/tensor_copy.h"
 #include "cutlass/util/reference/host/tensor_fill.h"
 #include "cutlass/util/tensor_view_io.h"
-// #include "helper.h"
+// #include "../common/helper.h"
 
 // The code section below describes datatype for input, output matrices and computation between
 // elements in input matrices.

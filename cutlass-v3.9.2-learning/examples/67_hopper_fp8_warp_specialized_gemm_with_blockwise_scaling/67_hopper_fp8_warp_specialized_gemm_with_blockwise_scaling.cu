@@ -78,7 +78,7 @@
 #include "cutlass/util/reference/host/gett.hpp"
 
 // Includes from examples directory
-#include "helper.h"
+#include "../common/helper.h"
 #include "hopper_fp8_commandline.hpp"
 
 using namespace cute;

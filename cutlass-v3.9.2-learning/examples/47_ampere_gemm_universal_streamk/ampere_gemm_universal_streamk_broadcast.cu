@@ -87,7 +87,7 @@
 #include "cutlass/gemm/kernel/default_gemm_universal_with_visitor.h"
 #include "cutlass/gemm/device/gemm_universal_adapter.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 
 

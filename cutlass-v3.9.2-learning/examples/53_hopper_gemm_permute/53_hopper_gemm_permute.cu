@@ -102,7 +102,7 @@
 #include "cutlass/epilogue/collective/collective_epilogue.hpp"
 #include "cutlass/epilogue/thread/linear_combination.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 #include "permute_kernel.cuh"
 #include "permute_traits.hpp"
 

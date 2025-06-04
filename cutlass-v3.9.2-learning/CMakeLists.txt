@@ -1107,6 +1107,8 @@ endif()
 if (CUTLASS_ENABLE_EXAMPLES)
   add_subdirectory(examples)
   add_dependencies(test_all test_examples)
+  add_subdirectory(learning)
+  add_dependencies(test_all test_learning)
 endif()
 
 if (CUTLASS_ENABLE_TESTS)

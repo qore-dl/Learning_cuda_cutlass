@@ -55,7 +55,7 @@ compared with CUDA Cores.  See example 27 for the trick of 3xTF32.
 #include "cutlass/util/reference/host/error_metrics.h"
 #include "cutlass/util/tensor_view_io.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

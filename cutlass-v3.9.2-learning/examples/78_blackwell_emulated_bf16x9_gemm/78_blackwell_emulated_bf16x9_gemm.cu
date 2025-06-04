@@ -75,7 +75,7 @@
 #include "cutlass/util/reference/device/tensor_compare.h"
 #include "cutlass/util/reference/device/tensor_fill.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 using namespace cute;
 

@@ -64,7 +64,7 @@ to problem size and threadblock_tile size.
 #include "cutlass/util/reference/device/convolution.h"
 #include "cutlass/util/tensor_view_io.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 // The code section below describes datatype for input, output tensors and computation between
 // elements 

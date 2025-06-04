@@ -71,7 +71,7 @@
 #include "cutlass/util/reference/device/tensor_compare.h"
 #include "cutlass/util/tensor_view_io.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 #include "gather_gemm.hpp"
 #include "gather_kernel.cuh"
 #include "scatter_epilogue.hpp"

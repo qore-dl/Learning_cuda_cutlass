@@ -76,7 +76,7 @@
 #include "cutlass/transform/kernel/sparse_gemm_compressor.hpp"
 #include "cutlass/transform/device/transform_universal_adapter.hpp"
 
-#include "helper.h"
+#include "../common/helper.h"
 using namespace cute;
 #if defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
 /////////////////////////////////////////////////////////////////////////////////////////////////

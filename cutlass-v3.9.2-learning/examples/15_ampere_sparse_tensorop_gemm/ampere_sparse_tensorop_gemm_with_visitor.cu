@@ -55,7 +55,7 @@ efficiently.
 
 #include "cutlass/epilogue/threadblock/fusion/visitors.hpp"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 // The code section below describes datatype for input, output matrices and computation between
 // elements in input matrices.

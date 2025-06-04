@@ -60,7 +60,7 @@ to correctly instantiate the GEMM template.
 #include "cutlass/reduction/device/reduce_split_k.h"
 #include "cutlass/reduction/thread/reduction_operators.h"
 
-#include "helper.h"
+#include "../common/helper.h"
 
 // The code section below describes datatype for input, output tensors and computation between
 // elements
