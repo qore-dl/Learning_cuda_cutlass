@@ -20,21 +20,22 @@
 
 ![cutlass abstract](./cutlass-v3.9.2-learning/images/cutlass_组件逻辑层级.png "图 1: Cutlass GEMM 相关组件逻辑关系图")
 
+图 1: Cutlass GEMM 相关组件逻辑关系图
+
 在阅读了Nvidia Stream-K的论文：["Stream-K: Work-centric Parallel Decomposition for Dense Matrix-Matrix Multiplication on the GPU"](./cutlass-v3.9.2-learning/papers/Stream-K.pdf)的论文后，理解了如图2和图3中所示的Sliced-K (图中为Data-parallel), Split-K (图中为Fixed-split) 和 Stream-K的数据tile与线程块映射方式，目前已经复现了[Example 47](./cutlass-v3.9.2-learning/learning/47_ampere_gemm_universal_streamk/ampere_gemm_universal_streamk.cu)。在这一基础上，当前正在阅读实现Stream-K以及基础 data-parallel GEMM 所涉及的Device-Level源码（[device::GemmUniversalBase](./cutlass-v3.9.2-learning/include/cutlass/gemm/device/gemm_universal_base.h)）和 Kernel-level 源码（[kernel::GemmUniversal](./cutlass-v3.9.2-learning/include/cutlass/gemm/kernel/gemm_universal.h),[kernel::GemmUniversalStreamk](./cutlass-v3.9.2-learning/include/cutlass/gemm/kernel/gemm_universal_streamk.h)）。
 
 
 ![SlicedK](./cutlass-v3.9.2-learning/images/SlicedK.png "图 2: 在假设具有4个SM的GPU上，采用Sliced-K(Data-parallel)策略计算问题规模为384 × 384 × 128的GEMM的执行计划")
 
-图 1: 在假设具有4个SM的GPU上，采用Sliced-K(Data-parallel)策略计算问题规模为384 × 384 × 128的GEMM的执行计划
+图 2: 在假设具有4个SM的GPU上，采用Sliced-K(Data-parallel)策略计算问题规模为384 × 384 × 128的GEMM的执行计划
 
 ![SlicedK](./cutlass-v3.9.2-learning/images/Split-K-VS-Stream-K.png "图 3: 在假设具有4个SM的GPU上，采用Split-K(Fixed-split)和Stream-K策略计算问题规模为384 × 384 × 128的GEMM的执行计划")
+
+图 3: 在假设具有4个SM的GPU上，采用Split-K(Fixed-split)和Stream-K策略计算问题规模为384 × 384 × 128的GEMM的执行计划
 
 针对Hopper架构下Cutlass的学习，本周会复现完成Example 48，并使用两周左右的时间复现 Example 55 与 69。在完成新的Example复现后会更新本仓库，并更新文档。针对上述的例子，在复现的同时会阅读相关源代码。
 
 所有源代码阅读会在相应位置给出注释，以方便后续学习以及浏览者查看。
-
-
-图2: 在假设具有4个SM的GPU上，采用Split-K(Fixed-split)和Stream-K策略计算问题规模为384 × 384 × 128的GEMM的执行计划
 
 ### 未来计划
 在完成 Example 69 的复现后，将重点将 Cutlass 在 Hopper 架构下的 example 复现完成，并更深入了解 Hopper 架构。
